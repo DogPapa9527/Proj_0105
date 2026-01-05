@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地圖射飛鏢 - 隨機旅遊產生器</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; font-family: "Microsoft JhengHei", sans-serif; }
+        #map { height: 100vh; width: 100%; z-index: 1; }
+        
+        /* 控制面板樣式 */
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 1000;
+            width: 300px;
+        }
+        h2 { margin-top: 0; font-size: 1.2rem; color: #333; }
+        .control-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="range"] { width: 100%; }
+        
+        button {
+            background-color: #ff5252;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            width: 100%;
+            font-size: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover { background-color: #e04040; }
+        
+        #result-display {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        a.gmap-link {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <h2>🎯 隨機旅遊射飛鏢</h2>
+        <div class="control-group">
+            <label>範圍半徑: <span id="radius-val">50</span> km</label>
+            <input type="range" id="radius-slider" min="5" max="500" value="50">
+        </div>
+        <p style="font-size: 0.8rem; color: #666;">💡 拖曳藍色標記來改變中心點</p>
+        <button onclick="throwDart()">射出飛鏢！</button>
+        
+        <div id="result-display">準備好後請按按鈕...</div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 1. 初始化地圖 (預設中心：台灣地理中心附近)
+        const map = L.map('map').setView([23.97565, 120.97388], 8);
+
+        // 加入 OpenStreetMap 圖層
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // 2. 設定變數
+        let centerLat = 23.97565;
+        let centerLng = 120.97388;
+        let radiusKm = 50;
+        let resultMarker = null;
+
+        // 3. 建立中心點標記 (可拖曳)
+        const centerMarker = L.marker([centerLat, centerLng], {draggable: true}).addTo(map);
+        centerMarker.bindPopup("這是圓心 (拖曳我)").openPopup();
+
+        // 4. 建立範圍圓圈
+        const rangeCircle = L.circle([centerLat, centerLng], {
+            color: '#3388ff',
+            fillColor: '#3388ff',
+            fillOpacity: 0.2,
+            radius: radiusKm * 1000 // 公尺
+        }).addTo(map);
+
+        // 5. 更新事件監聽
+        
+        // 當標記被拖曳時，更新圓圈位置
+        centerMarker.on('drag', function(e) {
+            const newPos = e.target.getLatLng();
+            centerLat = newPos.lat;
+            centerLng = newPos.lng;
+            rangeCircle.setLatLng(newPos);
+        });
+
+        // 當拉桿滑動時，更新半徑
+        const slider = document.getElementById('radius-slider');
+        const radiusDisplay = document.getElementById('radius-val');
+
+        slider.oninput = function() {
+            radiusKm = parseInt(this.value);
+            radiusDisplay.innerText = radiusKm;
+            rangeCircle.setRadius(radiusKm * 1000);
+        }
+
+        // 6. 核心邏輯：射飛鏢 (產生隨機座標)
+        function throwDart() {
+            // 清除上一次的結果
+            if (resultMarker) {
+                map.removeLayer(resultMarker);
+            }
+            document.getElementById('result-display').innerHTML = "飛鏢飛行中... ✈️";
+
+            // 使用數學計算圓內的隨機點
+            // 隨機角度 (0 到 2PI)
+            const angle = Math.random() * Math.PI * 2;
+            
+            // 隨機距離 (使用 sqrt 確保分布均勻，否則點會集中在圓心)
+            const distance = Math.sqrt(Math.random()) * radiusKm;
+
+            // 將距離與角度轉換為經緯度偏移量 (簡易計算)
+            // 地球平均半徑約 6371km
+            const earthRadius = 6371;
+            
+            const deltaLat = (distance * Math.cos(angle) / earthRadius) * (180 / Math.PI);
+            // 經度需要考慮緯度的修正
+            const deltaLng = (distance * Math.sin(angle) / (earthRadius * Math.cos(centerLat * Math.PI / 180))) * (180 / Math.PI);
+
+            const targetLat = centerLat + deltaLat;
+            const targetLng = centerLng + deltaLng;
+
+            // 7. 動畫與結果顯示
+            setTimeout(() => {
+                // 新增紅色飛鏢標記
+                resultMarker = L.marker([targetLat, targetLng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+
+                // 飛到該地點
+                map.flyTo([targetLat, targetLng], 10, {
+                    animate: true,
+                    duration: 1.5
+                });
+
+                // 生成 Google Maps 連結
+                const gmapUrl = `https://www.google.com/maps/search/?api=1&query=${targetLat},${targetLng}`;
+
+                resultMarker.bindPopup(`<b>🎯 命中地點！</b><br><a href="${gmapUrl}" target="_blank" class="gmap-link">在 Google Maps 開啟</a>`).openPopup();
+
+                document.getElementById('result-display').innerHTML = 
+                    `座標: ${targetLat.toFixed(4)}, ${targetLng.toFixed(4)}<br>` +
+                    `距離中心: ${distance.toFixed(1)} km<br>` +
+                    `<a href="${gmapUrl}" target="_blank" class="gmap-link">📍 在 Google Maps 查看</a>`;
+
+            }, 500); // 稍微延遲模擬思考
+        }
+    </script>
+</body>
+</html>
